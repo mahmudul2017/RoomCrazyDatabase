@@ -75,4 +75,17 @@
         android:textSize="18sp"
         android:textStyle="bold"
         app:backgroundTint="@null" />
+
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/btnCoroutines"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="72dp"
+        android:background="@drawable/rounded_button"
+        android:text="Kotlin Coroutines"
+        android:textAllCaps="false"
+        android:textColor="@color/teal_700"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        app:backgroundTint="@null" />
 </LinearLayout>

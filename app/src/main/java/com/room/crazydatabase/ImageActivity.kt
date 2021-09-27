@@ -1,16 +1,15 @@
 package com.room.crazydatabase
 
 import android.Manifest
-import android.R.attr
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.database.Cursor
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.drawable.BitmapDrawable
 import android.net.Uri
 import android.os.Build
-import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
 import android.provider.MediaStore
 import android.util.Log
@@ -18,26 +17,30 @@ import android.view.View
 import android.widget.ImageView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
+import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.lifecycleScope
+import com.room.crazydatabase.roomDB.FileUtil
 import com.room.crazydatabase.roomDB.vm.ImageViewModel
+import id.zelory.compressor.Compressor
+import id.zelory.compressor.loadBitmap
+import kotlinx.android.synthetic.main.activity_compress.*
 import kotlinx.android.synthetic.main.activity_image.*
 import java.io.ByteArrayOutputStream
 import java.io.File
-import android.R.attr.path
-import java.net.URI
-import android.graphics.drawable.BitmapDrawable
-import id.zelory.compressor.Compressor
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.GlobalScope
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.*
+import java.lang.Exception
+import java.text.DecimalFormat
+import kotlin.math.pow
 
 class ImageActivity : AppCompatActivity() {
     private lateinit var imageViewModel: ImageViewModel
     private lateinit var alertProfileDialog: AlertDialog
     private lateinit var compressedImageFile: File
+    private lateinit var galleryImageFile: File
     private lateinit var imageFile: File
+    //private var imageBitmap: Bitmap? = null
 
     private lateinit var username: String
     var imagePath: String? = null
@@ -52,6 +55,13 @@ class ImageActivity : AppCompatActivity() {
             chooseProfilePicture()
         }
 
+        btnCoroutines.setOnClickListener {
+            val id = 10
+
+            val callId = coroutineFunc()
+            Log.d("callId", "$callId")
+        }
+
         imgDelete.setOnClickListener {
             imageViewModel.deleteUserListsVM(this)
         }
@@ -62,53 +72,67 @@ class ImageActivity : AppCompatActivity() {
         }
 
         btnLogin.setOnClickListener {
-            username = edtUserName.text.toString().trim()
+            lifecycleScope.launch {
+                galleryImageFile = compressImageSize(compressedImageFile)
+                saveImageDb(galleryImageFile)
+                Log.d(
+                    "compressValue",
+                    "coroutines called ${getReadableFileSize(galleryImageFile.length())} " +
+                            ":: ${getReadableFileSize(compressedImageFile.length())}"
+                )
+            }
+        }
+    }
 
-            when {
-                username.isNullOrEmpty() -> {
-                    edtUserName.error = "Please enter the username"
-                }
-                else -> {
-                    val image = (imgProfile.drawable as BitmapDrawable).bitmap
+    private fun saveImageDb(compressFile: File?) {
+        username = edtUserName.text.toString().trim()
 
-                    // CALL THIS METHOD TO GET THE URI FROM THE BITMAP
-                    val tempUri: Uri = getImageUri(applicationContext, image!!)!!
-                    // CALL THIS METHOD TO GET THE ACTUAL PATH
-                    val imageFile = File(getRealPathFromURI(tempUri))
+        when {
+            username.isNullOrEmpty() -> {
+                edtUserName.error = "Please enter the username"
+            }
+            else -> {
+                //val image = (imgProfile.drawable as BitmapDrawable).bitmap
+                val image = BitmapFactory.decodeFile(compressFile.toString())
 
-                    /* GlobalScope.launch(Dispatchers.Main) {
-                        val compressedImageFile = Compressor.compress(this@ImageActivity, imageFile)
-                        Log.d("image", "$compressedImageFile")
-                    } */
+                val stream = ByteArrayOutputStream()
+                //image!!.compress(Bitmap.CompressFormat.JPEG, 100, stream)
+                val imageInByte: ByteArray = stream.toByteArray()
+                Log.d("image", "$image")
 
-                    //val image = BitmapFactory.decodeFile(imagePath)
-                    val stream = ByteArrayOutputStream()
-                    image.compress(Bitmap.CompressFormat.JPEG, 100, stream)
-                    val imageInByte: ByteArray = stream.toByteArray()
-
-                    Log.d("image", "$image")
-
-                    if (imageInByte != null) {
-                        imageViewModel.insertDataVM(
-                            this@ImageActivity,
-                            username,
-                            imageInByte
-                        )
-                        Log.d("userData", "$username ${imageInByte.size}")
-                        Toast.makeText(
-                            this@ImageActivity,
-                            "Inserted Successfully",
-                            Toast.LENGTH_LONG
-                        ).show()
-                    } else {
-                        Toast.makeText(
-                            this@ImageActivity,
-                            "Please select profile image",
-                            Toast.LENGTH_LONG
-                        ).show()
-                    }
+                if (imageInByte != null) {
+                    imageViewModel.insertDataVM(
+                        this@ImageActivity,
+                        username,
+                        imageInByte
+                    )
+                    Log.d("userData", "$username ${imageInByte.size}")
+                    Toast.makeText(
+                        this@ImageActivity,
+                        "Inserted Successfully",
+                        Toast.LENGTH_LONG
+                    ).show()
+                } else {
+                    Toast.makeText(
+                        this@ImageActivity,
+                        "Please select profile image",
+                        Toast.LENGTH_LONG
+                    ).show()
                 }
             }
+        }
+    }
+
+    private fun coroutineFunc(): Int {
+        GlobalScope.launch(Dispatchers.Main) {
+            btnCoroutines.text = "Called"
+        }
+        return 25
+    }
+
+    private suspend fun compressImageSize(file: File): File {
+        return withContext(Dispatchers.Main) {
+            Compressor.compress(this@ImageActivity, file)
         }
     }
 
@@ -197,12 +221,20 @@ class ImageActivity : AppCompatActivity() {
         when (requestCode) {
             1 -> if (resultCode == RESULT_OK) {
                 alertProfileDialog.cancel()
-                val selectedImageUri: Uri = intent!!.data!!
+                compressedImageFile = FileUtil.from(this, intent!!.data!!)?.also {
+                    // actualSizeTextView.text = String.format("Size : %s", getReadableFileSize(it.length()))
+                    // clearImage()
+                }
+                imgProfile.setImageBitmap(loadBitmap(compressedImageFile))
+
+                /* val selectedImageUri: Uri = intent!!.data!!
                 // val path: String? = selectedImageUri.path
                 imageFile = File(getRealPathFromURI(selectedImageUri))
-                imagePath = imageFile.path
-                imgProfile.setImageURI(selectedImageUri)
-                Log.d("img", "imgGallery called :: uri $selectedImageUri :: imagePath $imagePath :: file $imageFile")
+                // imagePath = imageFile.path
+                var imageBitmap = convertUriToBitmap(selectedImageUri)
+                imgProfile.setImageBitmap(imageBitmap)
+                // imgProfile.setImageURI(selectedImageUri)
+                Log.d("img", "imgGallery called :: uri $selectedImageUri :: imageBitmap $imageBitmap :: imageFile $imageFile") */
             }
             2 -> if (resultCode == RESULT_OK) {
                 alertProfileDialog.cancel()
@@ -214,22 +246,47 @@ class ImageActivity : AppCompatActivity() {
                 // CALL THIS METHOD TO GET THE ACTUAL PATH
                 imageFile = File(getRealPathFromURI(tempUri))
                 imagePath = imageFile.path
-                Log.d("img", "imgCamera called :: uri $tempUri :: imagePath $imagePath :: file $imageFile")
+                Log.d(
+                    "img",
+                    "imgCamera called :: uri $tempUri :: imagePath $imagePath :: file $imageFile"
+                )
             }
         }
     }
 
-    fun getImageUri(context: Context, bitmap: Bitmap): Uri? {
+    private fun getImageUri(context: Context, bitmap: Bitmap): Uri? {
         val bytes = ByteArrayOutputStream()
         bitmap.compress(Bitmap.CompressFormat.JPEG, 100, bytes)
-        val path: String = MediaStore.Images.Media.insertImage(context.contentResolver, bitmap, "Title", null)
+        val path: String =
+            MediaStore.Images.Media.insertImage(context.contentResolver, bitmap, "Title", null)
         return Uri.parse(path)
     }
 
-    fun getRealPathFromURI(uri: Uri?): String? {
+    private fun getRealPathFromURI(uri: Uri?): String? {
         val cursor: Cursor? = contentResolver.query(uri!!, null, null, null, null)
         cursor!!.moveToFirst()
         val idx: Int = cursor.getColumnIndex(MediaStore.Images.ImageColumns.DATA)
         return cursor.getString(idx)
+    }
+
+    private fun convertUriToBitmap(uri: Uri?): Bitmap? {
+        var bitmap: Bitmap? = null
+        try {
+            if (uri != null) {
+                bitmap = MediaStore.Images.Media.getBitmap(this.contentResolver, uri)
+            }
+        } catch (e: Exception) {
+            //handle exception
+        }
+        return bitmap
+    }
+
+    private fun getReadableFileSize(size: Long): String {
+        if (size <= 0) {
+            return "0"
+        }
+        val units = arrayOf("B", "KB", "MB", "GB", "TB")
+        val digitGroups = (kotlin.math.log10(size.toDouble()) / kotlin.math.log10(1024.0)).toInt()
+        return DecimalFormat("#,##0.#").format(size / 1024.0.pow(digitGroups.toDouble())) + " " + units[digitGroups]
     }
 }
